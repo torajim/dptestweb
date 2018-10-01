@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="appLogPath" value="/log/puser/dynamicPrice" />
+    <property name="appName" value="dptestweb" />
+    <property name="appLogFilePath" value="${appLogPath}/${appName}" />
+
+    <include resource="org/springframework/boot/logging/logback/defaults.xml" />
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml" />
+
+    <springProfile name="local">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+        </root>
+    </springProfile>
+
+    <springProfile name="stg">
+        <appender name="APP_LOG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${appLogFilePath}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!-- daily rollover -->
+                <fileNamePattern>${appLogFilePath}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            </rollingPolicy>
+
+            <encoder>
+                <pattern>${FILE_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="APP_LOG_FILE" />
+        </root>
+    </springProfile>
+
+    <springProfile name="prd">
+        <appender name="APP_LOG_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${appLogFilePath}.log</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <!-- daily rollover -->
+                <fileNamePattern>${appLogFilePath}.%d{yyyy-MM-dd}.log</fileNamePattern>
+            </rollingPolicy>
+
+            <encoder>
+                <pattern>${FILE_LOG_PATTERN}</pattern>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="APP_LOG_FILE" />
+        </root>
+    </springProfile>
+</configuration>

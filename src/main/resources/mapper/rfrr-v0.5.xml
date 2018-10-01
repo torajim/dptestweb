@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elevenst.dpm.repository.RecurrentRFMapper">
+    <select id="getLastWeekFeatureMatrix" parameterType="hashmap" resultType="com.elevenst.dpm.repository.RecurrentRFFeatureMatrixV1">
+        <![CDATA[
+        WITH BASE_DY AS (
+            SELECT
+                TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + LEVEL - 30 AS MDT
+            FROM DUAL
+            CONNECT BY LEVEL <= 60
+        ), WK_DY AS (
+            SELECT
+                A.MDT
+            FROM (
+                SELECT
+                    TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + LEVEL - 30 AS MDT
+                FROM DUAL
+                CONNECT BY LEVEL <= 60
+            ) A LEFT OUTER JOIN (
+                SELECT
+                TO_DATE(SOLAR_DY, 'yyyyMMdd') AS MDT,
+                HLDY_YN, HLDT_DESC, WEEKDY
+            FROM TMALL.sy_off_dy
+            ) B
+            ON A.MDT = B.MDT
+            WHERE HLDY_YN = 'N' -- 월-금 사이의 비공휴일
+                OR (WEEKDY = 7 AND (HLDT_DESC IS NULL OR LENGTH(HLDT_DESC) = 0)) -- 비공휴일 토요일
+        )
+        SELECT /*+ PARALLEL(A 32) */
+            *
+        FROM (
+            SELECT
+                TO_CHAR(BASE.mdt, 'yyyyMMdd') AS MDT
+                , BASE.dow
+                , (CASE WHEN HLDY_YN = 'Y' AND HLDT_DESC IS NOT NULL AND LENGTH(HLDT_DESC) > 0 THEN 1 ELSE 0 END) AS holiday
+                , FIRST_VALUE(WK_DY.MDT IGNORE NULLS) OVER (ORDER BY BASE.MDT ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) - BASE.MDT AS dist_next_wkdy
+                , (CASE WHEN 실시간실시간히트영역 IS NOT NULL AND 실시간실시간히트영역 = 'Y' THEN 1 ELSE 0 END) AS evnt_mw_rthit
+                , (CASE WHEN 쇼킹딜긴공영역 IS NOT NULL AND 쇼킹딜긴공영역 = 'Y' THEN 1 ELSE 0 END) AS evnt_mw_shckdeal
+                , (CASE WHEN 동영상배너 IS NOT NULL AND 동영상배너 = 'Y' THEN 1 ELSE 0 END) AS evnt_mw_mvbanner
+                , (CASE WHEN MD추천영역 IS NOT NULL AND MD추천영역 = 'Y' THEN 1 ELSE 0 END) AS evnt_mw_mdrecom
+                , LAST_VALUE(PRC_FT.REP_FINAL_DSC_PRC IGNORE NULLS) OVER (ORDER BY PRC_FT.CLCT_DY ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS mod_dsc_prc
+                , LAST_VALUE(PRC_FT.REP_SEL_PRC IGNORE NULLS) OVER (ORDER BY PRC_FT.CLCT_DY ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS mod_sel_prc
+                , NVL(FT_D1.ORD_PRD_QTY, 0) AS qty_sum_d1
+                , NVL(FT_D2.ORD_PRD_QTY, 0) AS qty_sum_d2
+                , NVL(FT_D3.ORD_PRD_QTY, 0) AS qty_sum_d3
+                , NVL(FT_D4.ORD_PRD_QTY, 0) AS qty_sum_d4
+                , NVL(FT_D5.ORD_PRD_QTY, 0) AS qty_sum_d5
+                , NVL(FT_D6.ORD_PRD_QTY, 0) AS qty_sum_d6
+                , NVL(FT_D7.ORD_PRD_QTY, 0) AS qty_sum_d7
+                , NVL(FT_D8.ORD_PRD_QTY, 0) AS qty_sum_d8
+                , NVL(FT_D9.ORD_PRD_QTY, 0) AS qty_sum_d9
+                , NVL(FT_D10.ORD_PRD_QTY, 0) AS qty_sum_d10
+                , NVL(FT_D11.ORD_PRD_QTY, 0) AS qty_sum_d11
+                , NVL(FT_D12.ORD_PRD_QTY, 0) AS qty_sum_d12
+                , NVL(FT_D13.ORD_PRD_QTY, 0) AS qty_sum_d13
+                , NVL(FT_D14.ORD_PRD_QTY, 0) AS qty_sum_d14
+                , NVL(AVG_ORD_QTY, 0) AS qty_sum_avg
+            FROM (
+                SELECT
+                    MDT
+                    , (CASE TO_CHAR(MDT, 'd')
+                        WHEN '1' THEN '7'
+                        WHEN '2' THEN '1'
+                        WHEN '3' THEN '2'
+                        WHEN '4' THEN '3'
+                        WHEN '5' THEN '4'
+                        WHEN '6' THEN '5'
+                        WHEN '7' THEN '6'
+                    END) AS DOW
+                    , #{prdNo, javaType=long, jdbcType=NUMERIC} AS PRD_NO
+                FROM BASE_DY
+            ) BASE LEFT OUTER JOIN (
+                SELECT
+                    TO_DATE(SOLAR_DY, 'yyyyMMdd') AS MDT,
+                    HLDY_YN, HLDT_DESC
+                FROM TMALL.sy_off_dy
+            ) HOLI
+            ON BASE.MDT = HOLI.MDT
+            LEFT OUTER JOIN WK_DY
+            ON BASE.MDT = WK_DY.MDT
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT PRC_FT
+            ON BASE.MDT = PRC_FT.CLCT_DY AND BASE.PRD_NO = PRC_FT.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D1 ON BASE.MDT - 1 = FT_D1.CLCT_DY AND BASE.PRD_NO = FT_D1.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D2 ON BASE.MDT - 2 = FT_D2.CLCT_DY AND BASE.PRD_NO = FT_D2.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D3 ON BASE.MDT - 3 = FT_D3.CLCT_DY AND BASE.PRD_NO = FT_D3.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D4 ON BASE.MDT - 4 = FT_D4.CLCT_DY AND BASE.PRD_NO = FT_D4.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D5 ON BASE.MDT - 5 = FT_D5.CLCT_DY AND BASE.PRD_NO = FT_D5.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D6 ON BASE.MDT - 6 = FT_D6.CLCT_DY AND BASE.PRD_NO = FT_D6.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D7 ON BASE.MDT - 7 = FT_D7.CLCT_DY AND BASE.PRD_NO = FT_D7.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D8 ON BASE.MDT - 8 = FT_D8.CLCT_DY AND BASE.PRD_NO = FT_D8.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D9 ON BASE.MDT - 9 = FT_D9.CLCT_DY AND BASE.PRD_NO = FT_D9.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D10 ON BASE.MDT - 10 = FT_D10.CLCT_DY AND BASE.PRD_NO = FT_D10.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D11 ON BASE.MDT - 11 = FT_D11.CLCT_DY AND BASE.PRD_NO = FT_D11.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D12 ON BASE.MDT - 12 = FT_D12.CLCT_DY AND BASE.PRD_NO = FT_D12.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D13 ON BASE.MDT - 13 = FT_D13.CLCT_DY AND BASE.PRD_NO = FT_D13.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D14 ON BASE.MDT - 14 = FT_D14.CLCT_DY AND BASE.PRD_NO = FT_D14.PRD_NO
+            LEFT OUTER JOIN (
+                SELECT
+                    PRD_NO
+                    , (CASE TO_CHAR(CLCT_DY, 'd')
+                        WHEN '1' THEN '7'
+                        WHEN '2' THEN '1'
+                        WHEN '3' THEN '2'
+                        WHEN '4' THEN '3'
+                        WHEN '5' THEN '4'
+                        WHEN '6' THEN '5'
+                        WHEN '7' THEN '6'
+                    END) AS DOW
+                    , AVG(ORD_PRD_QTY) AS AVG_ORD_QTY
+                FROM STTMALL.ST_PD_PRC_OPT
+                WHERE CLCT_DY BETWEEN TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') - 91 AND TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') - 1
+                GROUP BY PRD_NO, TO_CHAR(CLCT_DY, 'd')
+            ) FT_AVG_DOW ON BASE.DOW = FT_AVG_DOW.DOW AND BASE.PRD_NO = FT_AVG_DOW.PRD_NO
+            LEFT OUTER JOIN (
+                SELECT
+                    기준일자, 상품번호
+                    , MAX(실시간히트영역) AS 실시간실시간히트영역
+                    , MAX(쇼킹딜긴공영역) AS 쇼킹딜긴공영역
+                    , MAX(동영상배너) AS 동영상배너
+                    , MAX(MD추천영역) AS MD추천영역
+                FROM (
+                    SELECT
+                        TO_DATE(기준일자, 'yyyyMMdd') AS 기준일자, 시간대구분코드, 상품번호
+                        , DECODE(전시공간구분명, 'hit_product', 'Y', 'N') AS 실시간히트영역
+                        , DECODE(전시공간구분명, 'urgent_product', 'Y', 'N') AS 쇼킹딜긴공영역
+                        , DECODE(전시공간구분명, 'movie_product', 'Y', 'N') AS 동영상배너
+                        , DECODE(전시공간구분명, 'shockingdeal_product', 'Y', 'N') AS MD추천영역
+                    FROM STTMALL.SR_전시상품카탈로그매칭현황
+                    -- TODO : 실험용 임시 테이블로 구성했음. BIDB에서는 DWUSER의 테이블을 STTMALL에 SYNONYM으로 만들었음. 추후 운영반영시 제대로된 데이터 플로 설계가 필요함
+                    WHERE 영역구분명 = 'main_home'
+                ) GROUP BY 기준일자, 상품번호
+            ) FT_DISP ON BASE.MDT = FT_DISP.기준일자 AND BASE.PRD_NO = FT_DISP.상품번호
+        ) A
+        WHERE MDT BETWEEN TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') AND TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + 6
+        ORDER BY MDT
+        ]]>
+    </select>
+    <select id="getThisWeekFeatureMatrix" parameterType="hashmap" resultType="com.elevenst.dpm.repository.RecurrentRFFeatureMatrixV1">
+        <![CDATA[
+        WITH BASE_DY AS (
+            SELECT
+                TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + LEVEL - 30 AS MDT
+            FROM DUAL
+            CONNECT BY LEVEL <= 60
+        ), WK_DY AS (
+            SELECT
+                A.MDT
+            FROM (
+                SELECT
+                    TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + LEVEL - 30 AS MDT
+                FROM DUAL
+                CONNECT BY LEVEL <= 60
+            ) A LEFT OUTER JOIN (
+                SELECT
+                TO_DATE(SOLAR_DY, 'yyyyMMdd') AS MDT,
+                HLDY_YN, HLDT_DESC, WEEKDY
+            FROM TMALL.sy_off_dy
+            ) B
+            ON A.MDT = B.MDT
+            WHERE HLDY_YN = 'N' -- 월-금 사이의 비공휴일
+                OR (WEEKDY = 7 AND (HLDT_DESC IS NULL OR LENGTH(HLDT_DESC) = 0)) -- 비공휴일 토요일
+        )
+        SELECT /*+ PARALLEL(A 32) */
+        *
+        FROM (
+            SELECT
+                TO_CHAR(BASE.mdt, 'yyyyMMdd') AS MDT
+                , BASE.dow
+                , (CASE WHEN HLDY_YN = 'Y' AND HLDT_DESC IS NOT NULL AND LENGTH(HLDT_DESC) > 0 THEN 1 ELSE 0 END) AS holiday
+                , FIRST_VALUE(WK_DY.MDT IGNORE NULLS) OVER (ORDER BY BASE.MDT ROWS BETWEEN 1 FOLLOWING AND UNBOUNDED FOLLOWING) - BASE.MDT AS dist_next_wkdy
+                , 0 AS evnt_mw_rthit
+                , 0 AS evnt_mw_shckdeal
+                , 0 AS evnt_mw_mvbanner
+                , 0 AS evnt_mw_mdrecom
+                , 0 AS mod_dsc_prc
+                , NVL(LIVE_PRD.SEL_PRC, 0) AS mod_sel_prc
+                , NVL(FT_D1.ORD_PRD_QTY, 0) AS qty_sum_d1
+                , NVL(FT_D2.ORD_PRD_QTY, 0) AS qty_sum_d2
+                , NVL(FT_D3.ORD_PRD_QTY, 0) AS qty_sum_d3
+                , NVL(FT_D4.ORD_PRD_QTY, 0) AS qty_sum_d4
+                , NVL(FT_D5.ORD_PRD_QTY, 0) AS qty_sum_d5
+                , NVL(FT_D6.ORD_PRD_QTY, 0) AS qty_sum_d6
+                , NVL(FT_D7.ORD_PRD_QTY, 0) AS qty_sum_d7
+                , NVL(FT_D8.ORD_PRD_QTY, 0) AS qty_sum_d8
+                , NVL(FT_D9.ORD_PRD_QTY, 0) AS qty_sum_d9
+                , NVL(FT_D10.ORD_PRD_QTY, 0) AS qty_sum_d10
+                , NVL(FT_D11.ORD_PRD_QTY, 0) AS qty_sum_d11
+                , NVL(FT_D12.ORD_PRD_QTY, 0) AS qty_sum_d12
+                , NVL(FT_D13.ORD_PRD_QTY, 0) AS qty_sum_d13
+                , NVL(FT_D14.ORD_PRD_QTY, 0) AS qty_sum_d14
+                , NVL(AVG_ORD_QTY, 0) AS qty_sum_avg
+            FROM (
+                SELECT
+                    MDT
+                    , (CASE TO_CHAR(MDT, 'd')
+                        WHEN '1' THEN '7'
+                        WHEN '2' THEN '1'
+                        WHEN '3' THEN '2'
+                        WHEN '4' THEN '3'
+                        WHEN '5' THEN '4'
+                        WHEN '6' THEN '5'
+                        WHEN '7' THEN '6'
+                    END) AS DOW
+                    , #{prdNo, javaType=long, jdbcType=NUMERIC} AS PRD_NO
+                FROM BASE_DY
+            ) BASE LEFT OUTER JOIN (
+                SELECT
+                    TO_DATE(SOLAR_DY, 'yyyyMMdd') AS MDT,
+                    HLDY_YN, HLDT_DESC
+                FROM TMALL.sy_off_dy
+            ) HOLI
+            ON BASE.MDT = HOLI.MDT
+            LEFT OUTER JOIN WK_DY
+            ON BASE.MDT = WK_DY.MDT
+            LEFT OUTER JOIN TMALL.DP_LIVE_PRD LIVE_PRD
+            ON BASE.PRD_NO = LIVE_PRD.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D1 ON BASE.MDT - 1 = FT_D1.CLCT_DY AND BASE.PRD_NO = FT_D1.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D2 ON BASE.MDT - 2 = FT_D2.CLCT_DY AND BASE.PRD_NO = FT_D2.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D3 ON BASE.MDT - 3 = FT_D3.CLCT_DY AND BASE.PRD_NO = FT_D3.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D4 ON BASE.MDT - 4 = FT_D4.CLCT_DY AND BASE.PRD_NO = FT_D4.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D5 ON BASE.MDT - 5 = FT_D5.CLCT_DY AND BASE.PRD_NO = FT_D5.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D6 ON BASE.MDT - 6 = FT_D6.CLCT_DY AND BASE.PRD_NO = FT_D6.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D7 ON BASE.MDT - 7 = FT_D7.CLCT_DY AND BASE.PRD_NO = FT_D7.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D8 ON BASE.MDT - 8 = FT_D8.CLCT_DY AND BASE.PRD_NO = FT_D8.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D9 ON BASE.MDT - 9 = FT_D9.CLCT_DY AND BASE.PRD_NO = FT_D9.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D10 ON BASE.MDT - 10 = FT_D10.CLCT_DY AND BASE.PRD_NO = FT_D10.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D11 ON BASE.MDT - 11 = FT_D11.CLCT_DY AND BASE.PRD_NO = FT_D11.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D12 ON BASE.MDT - 12 = FT_D12.CLCT_DY AND BASE.PRD_NO = FT_D12.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D13 ON BASE.MDT - 13 = FT_D13.CLCT_DY AND BASE.PRD_NO = FT_D13.PRD_NO
+            LEFT OUTER JOIN STTMALL.ST_PD_PRC_OPT FT_D14 ON BASE.MDT - 14 = FT_D14.CLCT_DY AND BASE.PRD_NO = FT_D14.PRD_NO
+            LEFT OUTER JOIN (
+                SELECT
+                    PRD_NO
+                    , (CASE TO_CHAR(CLCT_DY, 'd')
+                        WHEN '1' THEN '7'
+                        WHEN '2' THEN '1'
+                        WHEN '3' THEN '2'
+                        WHEN '4' THEN '3'
+                        WHEN '5' THEN '4'
+                        WHEN '6' THEN '5'
+                        WHEN '7' THEN '6'
+                    END) AS DOW
+                    , AVG(ORD_PRD_QTY) AS AVG_ORD_QTY
+                FROM STTMALL.ST_PD_PRC_OPT
+                WHERE CLCT_DY BETWEEN TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') - 91 AND TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') - 1
+                GROUP BY PRD_NO, TO_CHAR(CLCT_DY, 'd')
+            ) FT_AVG_DOW ON BASE.DOW = FT_AVG_DOW.DOW AND BASE.PRD_NO = FT_AVG_DOW.PRD_NO
+        ) A
+        WHERE MDT BETWEEN TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') AND TO_DATE(#{dt, javaType=String, jdbcType=VARCHAR}, 'yyyyMMdd') + 6
+        ORDER BY MDT
+        ]]>
+    </select>
+</mapper>

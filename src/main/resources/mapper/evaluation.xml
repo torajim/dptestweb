@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.elevenst.dpm.repository.EvaluationMapper">
+    <select id="selectLastWeekSalesByPrdNo" parameterType="hashmap" resultType="com.elevenst.dpm.repository.DailyOrder">
+        <![CDATA[
+        with BASE as(
+            select
+                to_date(기준일자, 'yyyyMMdd') as ord_dt
+                , sum(주문상품수량) as ordQty
+            from dwuser.SD_상품거래실적
+            where 1=1
+            and 상품번호=#{prdNo}
+            and 기준일자 >= to_char(sysdate-7, 'yyyyMMdd')
+            group by 기준일자
+        )
+        select
+            a.dateval as ordDt
+            ,(case when BASE.ordQty > 0 then BASE.ordQty else 0 end) as ordQty
+        from
+            (select
+                trunc(sysdate) - rownum dateval
+            from all_objects
+            where rownum <= 7) a
+            ,BASE BASE
+        where
+            a.dateval = BASE.ord_dt(+)
+		order by ordDt asc
+        ]]>
+    </select>
+    <select id="selectImgUrlByPrdNo" parameterType="hashmap" resultType="string">
+        <![CDATA[
+            select basic_ext_nm from tmall.pd_prd_image where prd_no = #{prdNo}
+        ]]>
+    </select>
+    <select id="selectFinalDscPriceByPrdNo" parameterType="hashmap" resultType="long">
+        <![CDATA[
+            select final_dsc_prc from tmall.dp_live_prd where prd_no = #{prdNo}
+        ]]>
+    </select>
+</mapper>

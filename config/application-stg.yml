@@ -1,0 +1,32 @@
+spring:
+  rrfr:
+    model-path: /app/puser/dynamicPrice/model
+    pipeline-path: /app/puser/dynamicPrice/pipeline
+
+  bidb:
+    datasource:
+      driver-class-name: oracle.jdbc.driver.OracleDriver
+      jdbc-url: 
+      username: 
+      password: 
+      max-active: 20
+      max-idle: 20
+      max-wait: 15000
+      initial-size: 5
+      validation-query: select 1 from dual
+      test-on-borrow: true
+      test-while-idle: false
+
+  maindb:
+    datasource:
+      driver-class-name: oracle.jdbc.driver.OracleDriver
+      jdbc-url: 
+      username: 
+      password: 
+      max-active: 20
+      max-idle: 20
+      max-wait: 15000
+      initial-size: 5
+      validation-query: select 1 from dual
+      test-on-borrow: true
+      test-while-idle: false
